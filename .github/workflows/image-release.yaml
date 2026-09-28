@@ -1,0 +1,67 @@
+name: Release image
+on:
+  push:
+    tags:
+      - image/v*
+permissions:
+  contents: read
+  packages: write
+jobs:
+  test:
+    uses: ./.github/workflows/test.yaml
+  compatibility:
+    needs:
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          version: v0.33.0
+          node_image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+          kubectl_version: v1.37.0
+          cluster_name: kind
+      - name: Select latest published chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          chart_tag="$(gh release list --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("chart/v"))][0].tagName // ""')"
+          if [ -n "$chart_tag" ]; then
+            printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+            helm pull oci://ghcr.io/rejinka/charts/reprise --version "${chart_tag#chart/v}" --untar --untardir /tmp/reprise-chart
+            echo REPRISE_CHART=/tmp/reprise-chart/reprise >> "$GITHUB_ENV"
+          fi
+      - run: docker build -f Containerfile -t ghcr.io/rejinka/reprise:ci .
+      - run: kind load docker-image ghcr.io/rejinka/reprise:ci
+      - run: sh test/e2e-kind.sh
+  image:
+    needs:
+      - test
+      - compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: echo "version=${TAG#image/}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/rejinka/reprise:${{ steps.version.outputs.version }}

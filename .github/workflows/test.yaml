@@ -1,0 +1,45 @@
+name: Test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - name: API integration test
+        run: |
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.25
+          export KUBEBUILDER_ASSETS="$(setup-envtest use -p path 1.37.x)"
+          go test -tags=integration ./test/integration
+      - run: go vet ./...
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: make chart-check
+      - run: cmp config/crd/reprise.naji-dev.de_repriserequests.yaml charts/reprise/files/reprise.naji-dev.de_repriserequests.yaml
+  kind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          version: v0.33.0
+          node_image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+          kubectl_version: v1.37.0
+          cluster_name: kind
+      - run: docker build -f Containerfile -t ghcr.io/rejinka/reprise:ci .
+      - run: kind load docker-image ghcr.io/rejinka/reprise:ci
+      - run: sh test/e2e-kind.sh

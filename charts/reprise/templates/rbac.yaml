@@ -1,0 +1,85 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "reprise.fullname" . }}
+rules:
+  - apiGroups:
+      - reprise.naji-dev.de
+    resources:
+      - repriserequests
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - reprise.naji-dev.de
+    resources:
+      - repriserequests/status
+    verbs:
+      - get
+      - patch
+      - update
+{{- if .Values.podReadiness.enabled }}
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+{{- end }}
+{{- with .Values.targetRules }}
+{{ toYaml . | indent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "reprise.fullname" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "reprise.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "reprise.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "reprise.fullname" . }}-leader
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "reprise.fullname" . }}-leader
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "reprise.fullname" . }}-leader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "reprise.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

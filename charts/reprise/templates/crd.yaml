@@ -1,0 +1,7 @@
+{{- if .Values.crds.enabled }}
+{{- $crd := .Files.Get "files/reprise.naji-dev.de_repriserequests.yaml" }}
+{{- if .Values.crds.keep }}
+{{- $crd = $crd | replace "name: repriserequests.reprise.naji-dev.de" "name: repriserequests.reprise.naji-dev.de\n  annotations:\n    helm.sh/resource-policy: keep" }}
+{{- end }}
+{{ $crd }}
+{{- end }}

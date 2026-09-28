@@ -1,0 +1,16 @@
+apiVersion: reprise.naji-dev.de/v1alpha1
+kind: RepriseRequest
+metadata:
+  name: example
+  namespace: example
+spec:
+  mutations:
+    - target:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: example
+      patch:
+        type: merge
+        value:
+          spec:
+            replicas: 0
